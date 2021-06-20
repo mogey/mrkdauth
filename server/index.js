@@ -8,6 +8,7 @@ import { UserRouter } from "./routes/UserRoutes.js";
 const { DataTypes } = Sequelize;
 import Redis from "ioredis";
 import cookieParser from "cookie-parser";
+import morgan from "morgan";
 
 export const redisClient = new Redis({
   port: process.env.REDIS_PORT,
@@ -51,6 +52,7 @@ await User.sync({ force: true }).then((response) => {
 
 const app = express();
 app.use(bodyParser.json());
+app.use(morgan("dev"));
 app.use(cookieParser());
 const port = process.env.PORT || 5000;
 

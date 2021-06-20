@@ -24,11 +24,6 @@ const UserModel = (instance) =>
       allowNull: false,
       unique: true,
     },
-    createdOn: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: Sequelize.NOW,
-    },
     lastLoggedIn: {
       type: DataTypes.DATE,
       defaultValue: Sequelize.NOW,
@@ -39,32 +34,47 @@ const UserModel = (instance) =>
     },
   });
 
-const createUser = async (model, username, password, email) => {
-  return await model.create({
-    username: username,
-    password: password,
-    email: email,
-  });
-};
+async function createUser(model, username, password, email) {
+  try {
+    return await model.create({
+      username: username,
+      password: password,
+      email: email,
+    });
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
+}
 
-const findUserByID = async (model, id) => {
+async function findAllUsers(model) {
+  return await model.findAll();
+}
+
+async function findAllAdmins(model) {
+  return await model.findAll({ where: { isAdmin: 1 } });
+}
+
+async function findUserByID(model, id) {
   return await model.findOne({ where: { id: id } });
-};
+}
 
-const findUserByUsername = async (model, username) => {
+async function findUserByUsername(model, username) {
   return await model.findOne({ where: { username: username } });
-};
+}
 
-const findUserByEmail = async (model, email) => {
+async function findUserByEmail(model, email) {
   return await model.findOne({ where: { email: email } });
-};
+}
 
-const updateUserByID = async (model, id, options) => {
+async function updateUserByID(model, id, options) {
   return await model.update(
     {
       username: options.username,
       password: options.password,
       email: options.email,
+      isAdmin: options.isAdmin,
+      lastLoggedIn: options.lastLoggedIn,
     },
     {
       where: {
@@ -72,15 +82,15 @@ const updateUserByID = async (model, id, options) => {
       },
     }
   );
-};
+}
 
-const deleteUserByID = async (model, id) => {
+async function deleteUserByID(model, id) {
   return await model.destroy({
     where: {
       id: id,
     },
   });
-};
+}
 
 export {
   UserModel,
@@ -89,5 +99,7 @@ export {
   updateUserByID,
   deleteUserByID,
   findUserByEmail,
+  findAllAdmins,
+  findAllUsers,
   findUserByUsername,
 };
