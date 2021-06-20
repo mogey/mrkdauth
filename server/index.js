@@ -1,10 +1,25 @@
 import express from "express";
 import dotenv from "dotenv";
 dotenv.config();
-import routes from "./routes/api.js";
 import bodyParser from "body-parser";
 import Sequelize from "sequelize";
+import { UserModel } from "./models/UserModel.js";
+import { UserRouter } from "./routes/UserRoutes.js";
 const { DataTypes } = Sequelize;
+import Redis from "ioredis";
+import cookieParser from "cookie-parser";
+
+export const redisClient = new Redis({
+  port: process.env.REDIS_PORT,
+  host: process.env.REDIS_HOST,
+  family: 4,
+  password: process.env.REDIS_PASSWORD,
+  lazyConnect: true,
+});
+
+redisClient.connect(() => {
+  console.log("Connected to Redis Server");
+});
 
 //Initialize DB connection
 export const sequelizeInstance = new Sequelize(
@@ -14,7 +29,6 @@ export const sequelizeInstance = new Sequelize(
   {
     host: process.env.MYSQL_HOST,
     dialect: "mysql",
-    logging: () => {},
   }
 );
 
@@ -27,45 +41,17 @@ try {
 }
 
 //Define the model for the Players table
-export const Player = sequelizeInstance.define("Player", {
-  id: {
-    type: DataTypes.UUID,
-    defaultValue: Sequelize.UUIDV4,
-    primaryKey: true,
-  },
-  money: {
-    type: DataTypes.BIGINT,
-    defaultValue: 1000,
-  },
-  betAmount: {
-    type: DataTypes.BIGINT,
-    defaultValue: 0,
-  },
-  playerHand: {
-    type: DataTypes.JSON,
-    defaultValue: { cards: [] },
-  },
-  dealerHand: {
-    type: DataTypes.JSON,
-    defaultValue: { cards: [] },
-  },
-  gameDeck: {
-    type: DataTypes.JSON,
-    defaultValue: { cards: [] },
-  },
-  state: {
-    type: DataTypes.STRING,
-    defaultValue: "bet",
-  },
-});
+
+export const User = UserModel(sequelizeInstance);
 
 //Create the table for Player if it does not already exist
-await Player.sync().then((response) => {
+await User.sync({ force: true }).then((response) => {
   console.log("Created database table for player");
 });
 
 const app = express();
-
+app.use(bodyParser.json());
+app.use(cookieParser());
 const port = process.env.PORT || 5000;
 
 app.use((req, res, next) => {
@@ -77,9 +63,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(bodyParser.json());
-
-app.use("/api", routes);
+app.use("/api", UserRouter);
 
 app.listen(port, () => {
   console.log("Server is listening on port " + port);

@@ -4,7 +4,7 @@ const { DataTypes } = Sequelize;
 const UserModel = (instance) =>
   instance.define("User", {
     id: {
-      type: DataTypes.UUIDV4,
+      type: DataTypes.UUID,
       defaultValue: Sequelize.UUIDV4,
       primaryKey: true,
       unique: true,
@@ -16,10 +16,6 @@ const UserModel = (instance) =>
       unique: true,
     },
     password: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    salt: {
       type: DataTypes.STRING,
       allowNull: false,
     },
@@ -43,4 +39,55 @@ const UserModel = (instance) =>
     },
   });
 
-export { UserModel };
+const createUser = async (model, username, password, email) => {
+  return await model.create({
+    username: username,
+    password: password,
+    email: email,
+  });
+};
+
+const findUserByID = async (model, id) => {
+  return await model.findOne({ where: { id: id } });
+};
+
+const findUserByUsername = async (model, username) => {
+  return await model.findOne({ where: { username: username } });
+};
+
+const findUserByEmail = async (model, email) => {
+  return await model.findOne({ where: { email: email } });
+};
+
+const updateUserByID = async (model, id, options) => {
+  return await model.update(
+    {
+      username: options.username,
+      password: options.password,
+      email: options.email,
+    },
+    {
+      where: {
+        id: id,
+      },
+    }
+  );
+};
+
+const deleteUserByID = async (model, id) => {
+  return await model.destroy({
+    where: {
+      id: id,
+    },
+  });
+};
+
+export {
+  UserModel,
+  createUser,
+  findUserByID,
+  updateUserByID,
+  deleteUserByID,
+  findUserByEmail,
+  findUserByUsername,
+};
