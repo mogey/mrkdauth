@@ -1,20 +1,44 @@
 import bcrypt from "bcrypt";
 import {
   createUser,
+  deleteUserByID,
+  findAllUsers,
   findUserByEmail,
   findUserByID,
   findUserByUsername,
   updateUserByID,
 } from "../models/UserModel.js";
-import { redisClient } from "../index.js";
+import { mailerTransport, redisClient, Token, User } from "../index.js";
 import validator from "validator";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import {
+  createToken,
+  deleteTokenByID,
+  findAllTokens,
+  findTokenByToken,
+} from "../models/TokenModel.js";
 dotenv.config();
 
-async function registerUser(model, username, password, email) {
-  const user = await bcrypt.hash(password, 10).then((hash) => {
-    return createUser(model, username, hash, email);
+async function registerUser(model, TokenModel, username, password, email) {
+  const user = await bcrypt.hash(password, 10).then(async (hash) => {
+    const newUser = await createUser(model, username, hash, email);
+    if (!newUser) return false;
+    let expirationDate = new Date();
+    expirationDate.setDate(expirationDate.getDate() + 2);
+    const newToken = await createToken(
+      TokenModel,
+      newUser.id,
+      "verification",
+      expirationDate
+    );
+
+    const verificationEmail = await sendVerificationEmail(
+      newToken.token.toString(),
+      newUser
+    );
+
+    return newUser;
   });
 
   return user;
@@ -36,12 +60,7 @@ async function loginUser(model, username, password) {
   }
 
   if (user) {
-    const passwordMatches = bcrypt
-      .compare(password, user.password)
-      .then((result) => {
-        return true;
-      });
-    if (passwordMatches) {
+    if (await bcrypt.compare(password, user.password)) {
       const token = generateJWT(user);
       redisClient.set(token, " ", "EX", 604800);
       await updateUserByID(model, user.id, {
@@ -106,7 +125,11 @@ async function isVerifiedJWT(model, token) {
         await redisClient.del(token);
         return false;
       }
-      return await isSessionValid(token); /*
+      if (await isSessionValid(token)) {
+        return payload;
+      } else {
+        return false;
+      } /*
       if (payload.userID) {
         const user = await findUserByID(model, payload.userID);
         if (user) {
@@ -143,15 +166,157 @@ async function invalidateToken(token) {
   return false;
 }
 
-const getAllUsers = async function getAllUsers(model) {
-  return;
-};
+async function invalidateAllTokens() {
+  await redisClient.flushall();
+  return true;
+}
+
+async function getAllSessions() {
+  return await redisClient.keys("*");
+}
+
+async function forgotPassword(UserModel, TokenModel, email) {
+  try {
+    const userToReset = await findUserByEmail(UserModel, email);
+    let expirationDate = new Date();
+    expirationDate.setDate(expirationDate.getDate() + 2);
+    if (userToReset) {
+      const newToken = await createToken(
+        TokenModel,
+        userToReset.id,
+        "reset",
+        expirationDate
+      );
+
+      const resetEmail = await sendResetEmail(
+        newToken.token.toString(),
+        userToReset
+      );
+
+      return true;
+    } else {
+      return false;
+    }
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+}
+
+async function isUserAdmin(UserModel, userID) {
+  const user = await findUserByID(UserModel, userID);
+  if (!user) return false;
+  if (user.isAdmin) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+async function getAllUsers(UserModel) {
+  try {
+    return await findAllUsers(UserModel);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function getAllTokens(TokenModel) {
+  try {
+    return await findAllTokens(TokenModel);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function deleteUser(UserModel, IDToDelete) {
+  try {
+    await deleteUserByID(UserModel, IDToDelete);
+    return true;
+  } catch {
+    console.error(error);
+    return false;
+  }
+}
+
+async function deleteToken(TokenModel, IDToDelete) {
+  try {
+    await deleteTokenByID(TokenModel, IDToDelete);
+    return true;
+  } catch {
+    console.error(error);
+    return false;
+  }
+}
+
+async function resetPassword(UserModel, TokenModel, tokenID, password) {
+  try {
+    const token = await findTokenByToken(TokenModel, tokenID);
+    if (!token) return false;
+    if (new Date(token.expires) < Date.now()) {
+      await deleteTokenByID(TokenModel, token.id);
+      return false;
+    }
+    const user = await token.getUser();
+    const hash = await bcrypt.hash(password, 10);
+    await updateUserByID(UserModel, user.id, { password: hash });
+    await deleteTokenByID(TokenModel, token.id);
+    return true;
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+}
+
+async function sendResetEmail(tokenString, user) {
+  try {
+    return await mailerTransport.sendMail({
+      from: "auth@mrkdgaming.com",
+      to: user.email.toString(),
+      subject: "Password reset token",
+      text: tokenString,
+      html:
+        "<h1>Here is your password reset token</h1> <br /><p>" +
+        tokenString +
+        "</p>",
+    });
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+}
+
+async function sendVerificationEmail(tokenString, user) {
+  try {
+    return await mailerTransport.sendMail({
+      from: "auth@mrkdgaming.com",
+      to: user.email.toString(),
+      subject: "Verify your email address",
+      text: tokenString,
+      html:
+        "<h1>Click this link to verify your email</h1> <br /><p>" +
+        tokenString +
+        "</p>",
+    });
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+}
 
 export {
   registerUser,
   loginUser,
   loginUserWithToken,
   isVerifiedJWT,
+  forgotPassword,
+  resetPassword,
+  getAllTokens,
   invalidateToken,
+  deleteUser,
+  invalidateAllTokens,
   isSessionValid,
+  getAllSessions,
+  isUserAdmin,
+  getAllUsers,
 };

@@ -32,6 +32,10 @@ const UserModel = (instance) =>
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
+    verified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
   });
 
 async function createUser(model, username, password, email) {
@@ -48,7 +52,12 @@ async function createUser(model, username, password, email) {
 }
 
 async function findAllUsers(model) {
-  return await model.findAll();
+  try {
+    return await model.findAll();
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
 }
 
 async function findAllAdmins(model) {
@@ -68,28 +77,39 @@ async function findUserByEmail(model, email) {
 }
 
 async function updateUserByID(model, id, options) {
-  return await model.update(
-    {
-      username: options.username,
-      password: options.password,
-      email: options.email,
-      isAdmin: options.isAdmin,
-      lastLoggedIn: options.lastLoggedIn,
-    },
-    {
-      where: {
-        id: id,
+  try {
+    return await model.update(
+      {
+        username: options.username,
+        password: options.password,
+        email: options.email,
+        isAdmin: options.isAdmin,
+        lastLoggedIn: options.lastLoggedIn,
+        verified: options.verified,
       },
-    }
-  );
+      {
+        where: {
+          id: id,
+        },
+      }
+    );
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
 }
 
 async function deleteUserByID(model, id) {
-  return await model.destroy({
-    where: {
-      id: id,
-    },
-  });
+  try {
+    return await model.destroy({
+      where: {
+        id: id,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
 }
 
 export {
