@@ -15,6 +15,7 @@ import {
   loginUserWithToken,
   registerUser,
   resetPassword,
+  verifyEmail,
 } from "../services/UserService.js";
 import { Token, User } from "../index.js";
 import validator from "validator";
@@ -24,6 +25,7 @@ UserRouter.post("/register", async (req, res) => {
     return res.status(400).json({
       ...req.body,
       status: "error",
+      password: "",
       message: "Username is required",
     });
   }
@@ -31,6 +33,7 @@ UserRouter.post("/register", async (req, res) => {
     return res.status(400).json({
       ...req.body,
       status: "error",
+      password: "",
       message: "Password is required",
     });
   }
@@ -38,6 +41,7 @@ UserRouter.post("/register", async (req, res) => {
     return res.status(400).json({
       ...req.body,
       status: "error",
+      password: "",
       message: "Email is required",
     });
   }
@@ -45,6 +49,7 @@ UserRouter.post("/register", async (req, res) => {
     return res.status(400).json({
       ...req.body,
       status: "error",
+      password: "",
       message: "Username is invalid",
     });
   }
@@ -52,6 +57,7 @@ UserRouter.post("/register", async (req, res) => {
     return res.status(400).json({
       ...req.body,
       status: "error",
+      password: "",
       message: "Email is invalid",
     });
   }
@@ -59,6 +65,7 @@ UserRouter.post("/register", async (req, res) => {
     return res.status(400).json({
       ...req.body,
       status: "error",
+      password: "",
       message: "Password is invalid",
     });
   }
@@ -72,11 +79,14 @@ UserRouter.post("/register", async (req, res) => {
   );
 
   if (newUser) {
-    return res.status(201).json({ ...req.body, status: "success" });
+    return res
+      .status(201)
+      .json({ ...req.body, password: "", status: "success" });
   } else {
     res.status(400).json({
       ...req.body,
       status: "error",
+      password: "",
       message: "User registration service failiure",
     });
   }
@@ -88,6 +98,7 @@ UserRouter.post("/login", async (req, res) => {
     (await isSessionValid(req.cookies.mrkdauth)) &&
     !req.body.password
   ) {
+    console.log("nom nom");
     const response = await loginUserWithToken(User, req.cookies.mrkdauth);
     if (!response.token) {
       res.json({ ...req.body, ...response });
@@ -96,14 +107,20 @@ UserRouter.post("/login", async (req, res) => {
       res.status(401).cookie("mrkdauth", response.token, {
         httpOnly: true,
       });
-      res.status(200).json({ ...req.body, status: "success" });
+      res.status(200).json({
+        ...req.body,
+        status: "success",
+        username: response.username,
+        email: response.email,
+      });
       return;
     }
   }
-
+  console.log("password login");
   if (!req.body.username) {
     return res.status(400).json({
       ...req.body,
+      password: "",
       status: "error",
       message: "Username is required",
     });
@@ -111,6 +128,7 @@ UserRouter.post("/login", async (req, res) => {
   if (!req.body.password) {
     return res.status(400).json({
       ...req.body,
+      password: "",
       status: "error",
       message: "Password is required",
     });
@@ -118,27 +136,35 @@ UserRouter.post("/login", async (req, res) => {
   if (!validator.isAlphanumeric(req.body.username)) {
     return res.status(400).json({
       ...req.body,
+      password: "",
       status: "error",
       message: "Username is invalid",
     });
   }
-  if (!validator.isAlphanumeric(req.body.password)) {
+  if (!validator.isAscii(req.body.password)) {
     return res.status(400).json({
       ...req.body,
       status: "error",
+      password: "",
       message: "Password is invalid",
     });
   }
   const response = await loginUser(User, req.body.username, req.body.password);
 
   if (!response.token) {
-    res.status(401).json({ ...req.body, ...response });
+    res.status(401).json({ ...req.body, password: "", ...response });
     return;
   } else {
     res.cookie("mrkdauth", response.token, {
       httpOnly: true,
     });
-    res.status(200).json({ ...req.body, status: "success" });
+    res.status(200).json({
+      ...req.body,
+      password: "",
+      status: "success",
+      username: response.username,
+      email: response.email,
+    });
     return;
   }
 });
@@ -197,7 +223,7 @@ UserRouter.post("/forgotPassword", async (req, res) => {
   const serviceResponse = await forgotPassword(User, Token, req.body.email);
 
   if (serviceResponse) {
-    return res.status(201).json({ status: "success", token: serviceResponse });
+    return res.status(201).json({ status: "success" });
   } else {
     return res
       .status(500)
@@ -234,6 +260,22 @@ UserRouter.post("/resetPassword/:token", async (req, res) => {
     req.params.token,
     req.body.password
   );
+
+  if (serviceResponse) {
+    res.status(200).json({ status: "success" });
+  } else {
+    res.status(500).json({ status: "error" });
+  }
+});
+
+UserRouter.post("/verifyEmail/:token", async (req, res) => {
+  if (!req.params.token) {
+    return res
+      .status(400)
+      .json({ status: "error", message: "No token specified" });
+  }
+
+  const serviceResponse = await verifyEmail(User, Token, req.params.token);
 
   if (serviceResponse) {
     res.status(200).json({ status: "success" });

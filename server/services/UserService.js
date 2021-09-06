@@ -24,24 +24,27 @@ async function registerUser(model, TokenModel, username, password, email) {
   const user = await bcrypt.hash(password, 10).then(async (hash) => {
     const newUser = await createUser(model, username, hash, email);
     if (!newUser) return false;
-    let expirationDate = new Date();
-    expirationDate.setDate(expirationDate.getDate() + 2);
-    const newToken = await createToken(
-      TokenModel,
-      newUser.id,
-      "verification",
-      expirationDate
-    );
-
-    const verificationEmail = await sendVerificationEmail(
-      newToken.token.toString(),
-      newUser
-    );
-
+    await verifyEmailService(newUser, TokenModel);
     return newUser;
   });
 
   return user;
+}
+
+async function verifyEmailService(newUser, TokenModel) {
+  let expirationDate = new Date();
+  expirationDate.setDate(expirationDate.getDate() + 2);
+  const newToken = await createToken(
+    TokenModel,
+    newUser.id,
+    "verification",
+    expirationDate
+  );
+
+  const verificationEmail = await sendVerificationEmail(
+    newToken.token.toString(),
+    newUser
+  );
 }
 
 async function loginUser(model, username, password) {
@@ -67,7 +70,12 @@ async function loginUser(model, username, password) {
         ...user,
         lastLoggedIn: new Date().toString(),
       });
-      return { status: "success", token: token };
+      return {
+        status: "success",
+        token: token,
+        username: user.username,
+        email: user.email,
+      };
     } else {
       return { status: "error", message: "Username or password do not match" };
     }
@@ -75,14 +83,19 @@ async function loginUser(model, username, password) {
 }
 
 async function loginUserWithToken(model, token) {
-  const id = jwt.verify(token, process.env.JWT_SECRET, (err, payload) => {
+  const id = await jwt.decode(token, process.env.JWT_SECRET, (err, payload) => {
     if (err) {
-      console.log(err);
-      return { status: "error", message: "Invalid token" };
+      if (err.name !== "TokenExpiredError") {
+        console.log(err);
+        return { status: "error", message: "Invalid token" };
+      }
     }
-    return payload.userID;
   });
-  const user = await findUserByID(model, id);
+  if (id.status === "error") {
+    return id;
+  }
+
+  const user = await findUserByID(model, id.userID);
 
   if (!user) {
     return { status: "error", message: "Username or password do not match" };
@@ -92,11 +105,16 @@ async function loginUserWithToken(model, token) {
     const refreshToken = generateJWT(user);
     await redisClient.del(token);
     await redisClient.set(refreshToken, " ", "EX", 604800);
-    await updateUserByID(model, id, {
+    await updateUserByID(model, id.userID, {
       ...user,
       lastLoggedIn: new Date().toString(),
     });
-    return { status: "success", token: refreshToken };
+    return {
+      status: "success",
+      token: refreshToken,
+      username: user.username,
+      email: user.email,
+    };
   } else {
     return { status: "error", message: "Username or password do not match" };
   }
@@ -259,8 +277,26 @@ async function resetPassword(UserModel, TokenModel, tokenID, password) {
     }
     const user = await token.getUser();
     const hash = await bcrypt.hash(password, 10);
-    await updateUserByID(UserModel, user.id, { password: hash });
     await deleteTokenByID(TokenModel, token.id);
+    await updateUserByID(UserModel, user.id, { password: hash });
+    return true;
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+}
+
+async function verifyEmail(UserModel, TokenModel, tokenID) {
+  try {
+    const token = await findTokenByToken(TokenModel, tokenID);
+    if (!token) return false;
+    if (new Date(token.expires) < Date.now()) {
+      await deleteTokenByID(TokenModel, token.id);
+      return false;
+    }
+    const user = await token.getUser();
+    await deleteTokenByID(TokenModel, token.id);
+    await updateUserByID(UserModel, user.id, { ...user, verified: true });
     return true;
   } catch (err) {
     console.error(err);
@@ -295,6 +331,7 @@ async function sendVerificationEmail(tokenString, user) {
       text: tokenString,
       html:
         "<h1>Click this link to verify your email</h1> <br /><p>" +
+        "http://localhost:3000/verifyEmail/" +
         tokenString +
         "</p>",
     });
@@ -319,4 +356,5 @@ export {
   getAllSessions,
   isUserAdmin,
   getAllUsers,
+  verifyEmail,
 };
